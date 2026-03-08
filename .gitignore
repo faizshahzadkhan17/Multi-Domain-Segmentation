@@ -1,0 +1,68 @@
+# ==============================
+# Python Cache
+# ==============================
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ==============================
+# Virtual Environments
+# ==============================
+gpu_env/
+ENV_SETUP/
+venv/
+env/
+.venv/
+
+# ==============================
+# Model Weights / Checkpoints
+# ==============================
+checkpoints/
+segformer/checkpoints/
+*.pth
+*.pt
+*.ckpt
+
+# ==============================
+# Training / Experiment Outputs
+# ==============================
+logs/
+outputs/
+results/
+predictions/
+
+# Segmentation evaluation outputs
+segformer_eval/
+colored_visuals/
+visuals/
+Validation/
+
+# ==============================
+# Datasets (Too large for GitHub)
+# ==============================
+Clean_Dataset/
+Offroad_Segmentation_Training_Dataset/
+Offroad_Segmentation_testImages/
+
+# ==============================
+# Temporary / Generated Files
+# ==============================
+*.tmp
+*.temp
+
+# ==============================
+# System Files
+# ==============================
+.DS_Store
+Thumbs.db
+
+# ==============================
+# IDE / Editor Settings
+# ==============================
+.vscode/
+.idea/
+
+# ==============================
+# Jupyter Notebook Checkpoints
+# ==============================
+.ipynb_checkpoints/

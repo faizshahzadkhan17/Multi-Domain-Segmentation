@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <!-- =========================
+  META + THEME
+  ========================== -->
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sponge Bob • Semantic Segmentation Demo</title>
+
+  <!-- Tailwind (Play CDN) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: "#0a0a10",
+            panel: "#0f1017",
+            edge: "#1f2033",
+            prime: "#8b5cf6",
+            prime2: "#22d3ee"
+          },
+          borderRadius: { xl2: "1rem", blob: "2.2rem" },
+          boxShadow: {
+            soft: "0 30px 80px rgba(0,0,0,.45)",
+            glow: "0 0 0 1px rgba(139,92,246,.35), 0 12px 60px rgba(139,92,246,.35)"
+          },
+          fontFamily: { display: ["Inter","ui-sans-serif","system-ui"] },
+          keyframes: {
+            floaty: { '0%,100%':{transform:'translateY(0)'}, '50%':{transform:'translateY(-6px)'} },
+            ribbonShift: { '0%':{transform:'translate3d(0,0,0) rotate(0deg)'}, '50%':{transform:'translate3d(0,-12px,0) rotate(2deg)'}, '100%':{transform:'translate3d(0,0,0) rotate(0deg)'} },
+            blobDrift: { '0%':{transform:'translate3d(0,0,0) scale(1)'}, '50%':{transform:'translate3d(10px,-8px,0) scale(1.06)'}, '100%':{transform:'translate3d(0,0,0) scale(1)'} }
+          },
+          animation: {
+            floaty: 'floaty 7s ease-in-out infinite',
+            ribbonShift: 'ribbonShift 18s ease-in-out infinite',
+            blobDrift: 'blobDrift 22s ease-in-out infinite'
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Inter font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* =========================
+       GLOBAL CSS + DECOR
+       ========================== */
+    :root { --violet: 139, 92, 246; --cyan: 34, 211, 238; --orange: 255, 122, 61; }
+    body { background:#0a0a10; }
+
+    .noise { pointer-events:none; position:fixed; inset:-50%;
+      background-image:url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="140" height="140" viewBox="0 0 140 140"><filter id="n"><feTurbulence baseFrequency="0.8" numOctaves="2" seed="2" type="fractalNoise"/></filter><rect width="100%" height="100%" filter="url(%23n)" opacity="0.035"/></svg>');
+      opacity:.35; mix-blend-mode:soft-light; z-index:0;
+    }
+
+    .ribbon {
+      position: fixed; inset: -20% -10% auto -10%; height: 70vh; z-index: 0; pointer-events: none;
+      background:
+        radial-gradient(900px 350px at 15% -10%, rgba(var(--orange),.20), transparent 60%),
+        radial-gradient(1000px 420px at 85% -15%, rgba(var(--violet),.33), transparent 60%),
+        radial-gradient(1200px 420px at 50% -25%, rgba(var(--cyan),.22), transparent 60%);
+      filter: blur(10px);
+      animation: ribbonShift 20s ease-in-out infinite;
+    }
+
+    .orb { position:absolute; width:540px; height:540px; border-radius:9999px; filter: blur(60px);
+      mix-blend-mode: screen; opacity:.4; transform: translate3d(0,0,0); transition: transform .25s ease-out;
+      animation: blobDrift 24s ease-in-out infinite;
+    }
+    .orb.violet { background: radial-gradient(circle at 30% 30%, rgba(var(--violet),.9), rgba(var(--violet),.05)); }
+    .orb.cyan   { background: radial-gradient(circle at 70% 70%, rgba(var(--cyan),.9), rgba(var(--cyan),.05)); }
+    .orb.orange { background: radial-gradient(circle at 50% 50%, rgba(var(--orange),.9), rgba(var(--orange),.05)); }
+
+    .glass { backdrop-filter: blur(16px); background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02)); }
+    .agb { position: relative; }
+    .agb::before {
+      content:""; position:absolute; inset:-1px; border-radius: inherit; z-index:-1;
+      background: linear-gradient(120deg, rgba(var(--violet),.5), rgba(var(--cyan),.5), rgba(var(--violet),.5));
+      background-size: 200% 200%;
+      filter: blur(10px); opacity:.28;
+      animation: ribbonShift 16s linear infinite;
+    }
+
+    .drop-target.dragover { outline: 2px dashed rgba(var(--violet),.9); outline-offset: -10px; }
+
+    .nav-blur { backdrop-filter: blur(12px); background: rgba(15,16,23,.55); border:1px solid rgba(255,255,255,.08); }
+
+    #particles { position: fixed; inset: 0; z-index: 0; pointer-events: none; }
+  </style>
+</head>
+
+<body class="text-zinc-100 antialiased font-display relative overflow-x-hidden">
+  <!-- Background layers -->
+  <canvas id="particles"></canvas>
+  <div class="ribbon"></div>
+  <div class="noise"></div>
+
+  <div id="orb1" class="orb violet" style="top:-80px; left:-120px;"></div>
+  <div id="orb2" class="orb cyan"   style="top:-120px; right:-140px;"></div>
+  <div id="orb3" class="orb orange" style="bottom:-180px; left:20%;"></div>
+
+  <!-- NAVBAR -->
+  <nav class="nav-blur fixed top-4 left-1/2 -translate-x-1/2 z-20 w-[min(1100px,94vw)] rounded-2xl px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <div class="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse"></div>
+      <span class="text-sm text-zinc-300">Live local demo</span>
+    </div>
+    <div class="flex items-center gap-6">
+      <a href="#ui" class="text-sm text-zinc-300 hover:text-white">Demo</a>
+      <a class="text-sm text-zinc-300 hover:text-white">Docs</a>
+      <div class="text-sm text-zinc-400 border-l pl-5 border-white/10">Team <span class="font-semibold text-zinc-200">Sponge Bob</span></div>
+    </div>
+  </nav>
+
+  <div class="relative z-10 max-w-6xl mx-auto px-5 pt-28 pb-16">
+    <!-- HERO -->
+    <header class="mb-8">
+      <div class="flex flex-wrap items-center justify-between gap-6">
+        <div class="space-y-2">
+          <h1 class="text-4xl sm:text-6xl font-extrabold leading-[1.05]">
+            Semantic <span class="bg-gradient-to-r from-prime to-prime2 bg-clip-text text-transparent">Segmentation</span>
+          </h1>
+          <div class="flex gap-3 pt-2">
+            <a href="#ui" class="rounded-blob px-4 py-2.5 bg-gradient-to-r from-prime to-prime2 shadow-glow font-semibold">Open Demo</a>
+            <a class="rounded-blob px-4 py-2.5 bg-white/5 border border-white/10 hover:bg-white/10">Docs</a>
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-sm text-zinc-400">Team</div>
+          <div class="text-2xl font-bold tracking-wide">Sponge Bob</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- MAIN CARD -->
+    <section id="ui" class="glass agb rounded-2xl p-6 sm:p-7 shadow-soft space-y-6">
+
+      <!-- Controls Row -->
+      <div class="flex flex-wrap items-center gap-3">
+        <label for="file"
+          class="inline-flex items-center gap-2 px-4 py-2 rounded-blob bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer select-none transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 12V4m0 0l-3 3m3-3l3 3"/></svg>
+          <span>Upload image</span>
+        </label>
+        <input id="file" type="file" accept="image/*" class="hidden" />
+        <div id="file-name" class="text-sm text-zinc-400 truncate max-w-[18rem]">No file chosen</div>
+
+        <div class="flex items-center gap-3 ml-auto">
+          <label class="text-sm text-zinc-400">Opacity</label>
+          <input id="alpha" type="range" min="0" max="1" step="0.05" value="0.5" class="w-44 accent-purple-400">
+          <span id="alphaVal" class="text-sm tabular-nums text-zinc-300">0.50</span>
+
+          <button id="run" class="rounded-blob px-5 py-2.5 bg-gradient-to-r from-prime to-prime2 shadow-glow font-semibold disabled:opacity-60 disabled:cursor-not-allowed">
+            <svg class="w-5 h-5 inline -mt-0.5" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24"><path d="M8 5v14l11-7-11-7z"/></svg>
+            <span>Run inference</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- PREVIEWS GRID -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <!-- Original -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold tracking-wide text-zinc-200">Original</h3>
+            <div id="orig-meta" class="text-xs text-zinc-400"></div>
+          </div>
+          <div id="origBox" class="drop-target aspect-video rounded-xl2 border border-white/10 bg-black/30 grid place-content-center text-zinc-500 overflow-hidden shadow-[inset_0_0_40px_rgba(0,0,0,.35)]">
+            <span class="text-sm">Drop an image here or use the button</span>
+          </div>
+        </div>
+
+        <!-- Prediction -->
+        <div>
+          <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold tracking-wide text-zinc-200">Prediction</h3>
+            <div id="pred-meta" class="text-xs text-zinc-400"></div>
+          </div>
+          <div id="predBox" class="aspect-video rounded-xl2 border border-white/10 bg-black/30 grid place-content-center text-zinc-500 overflow-hidden shadow-[inset_0_0_40px_rgba(0,0,0,.35)]">
+            <span class="text-sm">Overlay will appear here</span>
+          </div>
+          <div class="flex items-center gap-3 mt-3">
+            <button id="download" class="rounded-blob px-4 py-2 bg-white/5 border border-white/10 hover:bg-white/10 text-sm disabled:opacity-60 disabled:cursor-not-allowed" disabled>
+              Download overlay
+            </button>
+            <div id="latency" class="text-xs text-zinc-400 ml-auto">Latency: —</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- LEGEND -->
+      <details id="legend" class="mt-1 open:mt-2">
+        <summary class="cursor-pointer text-sm text-zinc-400 hover:text-zinc-200 transition">Legend (optional)</summary>
+        <ul class="mt-3 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 text-sm">
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#228B22"></span>Trees (100)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#3CB371"></span>Lush Bushes (200)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#BDB76B"></span>Dry Grass (300)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#D2B48C"></span>Dry Bushes (500)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#808080"></span>Ground Clutter (550)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#FFB6C1"></span>Flowers (600)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#8B4513"></span>Logs (700)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#696969"></span>Rocks (800)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#DEB887"></span>Landscape (7100)</li>
+          <li class="flex items-center gap-2"><span class="w-3 h-3 rounded-sm" style="background:#87CEEB"></span>Sky (10000)</li>
+        </ul>
+      </details>
+    </section>
+
+    <footer class="mt-7 text-center text-xs text-zinc-500">
+      Made for Hackathon • Team <span class="font-semibold text-zinc-300">Sponge Bob</span> ✨
+    </footer>
+  </div>
+
+  <!-- =========================
+       APP LOGIC + PARTICLES + PARALLAX
+       ========================== -->
+  <script>
+    /* Particles (cursor-follow glow dust) */
+    (() => {
+      const c = document.getElementById('particles');
+      const ctx = c.getContext('2d');
+      const DPR = Math.min(window.devicePixelRatio || 1, 2);
+      let W, H, particles, mx = 0, my = 0;
+
+      function size(){ W=c.width=innerWidth*DPR; H=c.height=innerHeight*DPR; }
+      size(); addEventListener('resize', size);
+      addEventListener('mousemove', e => { mx=e.clientX*DPR; my=e.clientY*DPR; }, {passive:true});
+
+      const N = 70;
+      function reset(){
+        particles = Array.from({length:N}, () => ({
+          x: Math.random()*W, y: Math.random()*H,
+          vx:(Math.random()-0.5)*0.1, vy:(Math.random()-0.5)*0.1,
+          r: 1 + Math.random()*1.6, a: 0.2 + Math.random()*0.4
+        }));
+      }
+      reset();
+
+      function tick(){
+        ctx.clearRect(0,0,W,H);
+        for(const p of particles){
+          const dx = mx - p.x, dy = my - p.y;
+          const d2 = Math.max(dx*dx+dy*dy, 2000);
+          p.vx += dx / d2 * 40; p.vy += dy / d2 * 40;
+          p.x += p.vx; p.y += p.vy; p.vx *= 0.985; p.vy *= 0.985;
+          if (p.x<0) p.x+=W; if (p.x>W) p.x-=W;
+          if (p.y<0) p.y+=H; if (p.y>H) p.y-=H;
+
+          const g = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r*6);
+          g.addColorStop(0, `rgba(${Math.random()<.5?'139,92,246':'34,211,238'},${p.a})`);
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x,p.y,p.r*6,0,Math.PI*2); ctx.fill();
+        }
+        requestAnimationFrame(tick);
+      }
+      tick();
+    })();
+
+    /* Orb parallax */
+    (() => {
+      const orbs=[document.getElementById('orb1'),document.getElementById('orb2'),document.getElementById('orb3')];
+      let w=innerWidth,h=innerHeight; addEventListener('resize',()=>{w=innerWidth;h=innerHeight;});
+      addEventListener('mousemove', e=>{
+        const x=(e.clientX/w-0.5), y=(e.clientY/h-0.5);
+        orbs[0].style.transform=`translate(${x*28}px, ${y*28}px)`;
+        orbs[1].style.transform=`translate(${x*-32}px, ${y*-36}px)`;
+        orbs[2].style.transform=`translate(${x*20}px, ${y*-18}px)`;
+      }, {passive:true});
+    })();
+
+    /* ---- DOM refs ---- */
+    const $ = (id) => document.getElementById(id);
+    const fileEl = $('file'), runEl = $('run'), dlEl = $('download');
+    const alphaEl = $('alpha'), alphaVal = $('alphaVal');
+    const origBox = $('origBox'), predBox = $('predBox');
+    const origMeta = $('orig-meta'), predMeta = $('pred-meta');
+    const latencyEl = $('latency'), fileNameEl = $('file-name');
+
+    let overlayDataUrl = null, currentFile = null;
+
+    const updateRunState = () => { runEl.disabled = !currentFile; };
+
+    alphaEl.addEventListener('input', ()=>{ alphaVal.textContent = Number(alphaEl.value).toFixed(2); });
+
+    const dropTarget = origBox;
+    ['dragenter','dragover'].forEach(evt =>
+      dropTarget.addEventListener(evt, e => { e.preventDefault(); dropTarget.classList.add('dragover'); })
+    );
+    ['dragleave','drop'].forEach(evt =>
+      dropTarget.addEventListener(evt, e => { e.preventDefault(); dropTarget.classList.remove('dragover'); })
+    );
+    dropTarget.addEventListener('drop', e => { const f=e.dataTransfer?.files?.[0]; if(f) setFile(f); });
+
+    fileEl.addEventListener('change', ()=>{ const f=fileEl.files?.[0]; if(f) setFile(f); });
+
+    function setFile(f){
+      currentFile = f; fileNameEl.textContent = f.name;
+      const r = new FileReader();
+      r.onload = () => {
+        const img = new Image(); img.src = r.result;
+        img.onload = () => {
+          origBox.innerHTML=''; img.className='w-full h-full object-contain';
+          origBox.appendChild(img);
+          origMeta.textContent = `${f.name} • ${(f.size/1024).toFixed(1)} KB • ${img.naturalWidth}×${img.naturalHeight}`;
+          updateRunState();
+        };
+      };
+      r.readAsDataURL(f);
+    }
+
+    runEl.addEventListener('click', async () => {
+      const f = currentFile; if (!f) return alert('Pick an image first.');
+
+      runEl.disabled = true; 
+      const originalText = runEl.textContent; 
+      runEl.textContent = 'Running…';
+
+      predBox.innerHTML = '<div class="text-sm text-zinc-400">Processing…</div>';
+      predMeta.textContent=''; 
+      dlEl.disabled=true; 
+      latencyEl.textContent='Latency: —';
+
+      try {
+        const fd = new FormData(); 
+        fd.append('file', f);
+        const alpha = parseFloat(alphaEl.value);
+        const url = `http://localhost:8000/infer?overlay_alpha=${alpha}`;
+
+        const res = await fetch(url, { method:'POST', body:fd });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Server error');
+
+        overlayDataUrl = `data:image/png;base64,${data.overlay_png_b64}`;
+        const out = new Image(); out.src = overlayDataUrl;
+
+        out.onload = () => {
+          predBox.innerHTML='';
+          out.className='w-full h-full object-contain';
+          predBox.appendChild(out);
+        };
+
+        latencyEl.textContent = `Latency: ${data.latency_ms} ms`;
+        predMeta.textContent = 'Overlay ready'; 
+        dlEl.disabled = false;
+
+      } catch (e) {
+        predBox.innerHTML = `<div class="text-red-300">${e.message}</div>`;
+      } finally {
+        runEl.disabled=false; 
+        runEl.textContent=originalText;
+      }
+    });
+
+    dlEl.addEventListener('click', () => {
+      if (!overlayDataUrl) return;
+      const a = document.createElement('a'); 
+      a.href = overlayDataUrl; 
+      a.download = 'overlay.png';
+      a.click();
+    });
+
+    updateRunState();
+
+    /* ======================================================
+       ⭐ FIX OPEN DEMO BUTTON (smooth scroll + offset)
+       ====================================================== */
+    document.querySelectorAll('a[href="#ui"]').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = document.getElementById('ui');
+        const offset = -80; // navbar offset
+        const top = target.getBoundingClientRect().top + window.scrollY + offset;
+        window.scrollTo({ top, behavior: 'smooth' });
+      });
+    });
+  </script>
+
+</body>
+</html>
