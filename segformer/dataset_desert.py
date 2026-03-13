@@ -1,0 +1,98 @@
+import os
+import numpy as np
+import torch
+from torch.utils.data import Dataset
+from PIL import Image
+import torchvision.transforms.functional as TF
+
+
+# ==========================================
+# Desert dataset label mapping
+# ==========================================
+
+VALUE_MAP = {
+    0: 0,   # background
+    1: 1,   # vegetation
+    2: 2,   # bushes
+    3: 3,   # ground
+    27: 4,  # landscape
+    39: 5   # sky
+}
+
+NUM_CLASSES = 6
+
+
+class DesertSegmentationDataset(Dataset):
+
+    def __init__(
+        self,
+        root_dir: str,
+        image_size: int = 512,
+        augment: bool = False
+    ):
+
+        self.image_dir = os.path.join(root_dir, "Color_Images")
+        self.mask_dir = os.path.join(root_dir, "Segmentation")
+
+        self.files = sorted(os.listdir(self.image_dir))
+
+        self.image_size = image_size
+        self.augment = augment
+
+    def __len__(self):
+        return len(self.files)
+
+
+    # ==========================================
+    # Convert raw mask values → class IDs
+    # ==========================================
+
+    def convert_mask(self, mask):
+
+        arr = np.array(mask)
+
+        new_mask = np.zeros_like(arr, dtype=np.uint8)
+
+        for raw_val, class_id in VALUE_MAP.items():
+            new_mask[arr == raw_val] = class_id
+
+        return Image.fromarray(new_mask)
+
+
+    # ==========================================
+    # Load one sample
+    # ==========================================
+
+    def __getitem__(self, idx):
+
+        filename = self.files[idx]
+
+        img_path = os.path.join(self.image_dir, filename)
+        mask_path = os.path.join(self.mask_dir, filename)
+
+        image = Image.open(img_path).convert("RGB")
+        mask = Image.open(mask_path)
+
+        mask = self.convert_mask(mask)
+
+        # Resize
+        image = TF.resize(image, (self.image_size, self.image_size))
+        mask = TF.resize(mask, (self.image_size, self.image_size), interpolation=Image.NEAREST)
+
+        # Augmentation
+        if self.augment:
+
+            if torch.rand(1) > 0.5:
+                image = TF.hflip(image)
+                mask = TF.hflip(mask)
+
+            if torch.rand(1) > 0.5:
+                image = TF.vflip(image)
+                mask = TF.vflip(mask)
+
+        # Convert to tensor
+        image = TF.to_tensor(image)
+
+        mask = torch.from_numpy(np.array(mask)).long()
+
+        return image, mask

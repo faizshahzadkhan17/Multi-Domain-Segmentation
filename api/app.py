@@ -1,60 +1,88 @@
-import time
-import base64
-import io
 import torch
-import numpy as np
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
-from PIL import Image
-from transformers import SegformerForSemanticSegmentation
 
-from utils import preprocess, decode_segmap, overlay_mask
+from inference import run_inference
+from model_loader import model_manager
+
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-NUM_CLASSES = 6
 
-app = FastAPI()
+app = FastAPI(title="SegFormer Multi-Terrain API")
 
-# CORS (frontend support)
+
+# ----------------------------------------------------
+# CORS (Frontend Access)
+# ----------------------------------------------------
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-print("Loading model...")
-model = SegformerForSemanticSegmentation.from_pretrained(
-    "../segformer/checkpoints/best_model",
-    num_labels=NUM_CLASSES
-).to(DEVICE)
-model.eval()
 
-@app.post("/infer")
-async def infer(file: UploadFile = File(...), overlay_alpha: float = 0.5):
-    start = time.time()
+# ----------------------------------------------------
+# Load Models On Startup
+# ----------------------------------------------------
 
-    image = Image.open(io.BytesIO(await file.read())).convert("RGB")
-    w, h = image.size
+@app.on_event("startup")
+def load_models():
 
-    pixel_values = preprocess(image).to(DEVICE)
+    print("Loading SegFormer models...")
 
-    with torch.no_grad():
-        outputs = model(pixel_values=pixel_values)
-        preds = torch.argmax(outputs.logits, dim=1)[0].cpu().numpy()
-
-    preds = np.array(
-        Image.fromarray(preds.astype(np.uint8)).resize((w, h), Image.NEAREST)
+    model_manager.load_model(
+        "desert",
+        "../checkpoints/desert_segformer_b2/best_model",
+        num_classes=6
     )
 
-    color_mask = decode_segmap(preds)
-    overlay = overlay_mask(image, color_mask, alpha=overlay_alpha)
+    model_manager.load_model(
+        "mountain",
+        "../checkpoints/mountain_forest_segformer_b2/best_model",
+        num_classes=15
+    )
 
-    buf = io.BytesIO()
-    overlay.save(buf, format="PNG")
-    b64 = base64.b64encode(buf.getvalue()).decode()
+    model_manager.load_model(
+        "roads",
+        "../checkpoints/roads_segformer_b2/best_model",
+        num_classes=20
+    )
+
+    print("All models loaded successfully.")
+
+
+# ----------------------------------------------------
+# Health Check
+# ----------------------------------------------------
+
+@app.get("/")
+def root():
+    return {"message": "SegFormer Multi-Terrain API Running"}
+
+
+# ----------------------------------------------------
+# Inference Endpoint
+# ----------------------------------------------------
+
+@app.post("/infer")
+async def infer(
+    file: UploadFile = File(...),
+    model: str = Query("desert"),
+    overlay_alpha: float = 0.5
+):
+
+    image_bytes = await file.read()
+
+    overlay_b64, latency = run_inference(
+        image_bytes,
+        model,
+        overlay_alpha
+    )
 
     return {
-        "overlay_png_b64": b64,
-        "latency_ms": int((time.time() - start) * 1000)
+        "overlay_png_b64": overlay_b64,
+        "latency_ms": latency
     }

@@ -142,6 +142,15 @@
 
       <!-- Controls Row -->
       <div class="flex flex-wrap items-center gap-3">
+
+        <!-- Model Selector -->
+        <select id="modelSelect"
+          class="px-3 py-2 rounded-lg bg-white/5 border border-white/10 text-sm">
+          <option value="desert">Desert Model</option>
+          <option value="mountain">Mountain / Forest Model</option>
+          <option value="roads">Roads Model</option>
+        </select>
+        
         <label for="file"
           class="inline-flex items-center gap-2 px-4 py-2 rounded-blob bg-white/5 hover:bg-white/10 border border-white/10 cursor-pointer select-none transition">
           <svg class="w-5 h-5" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M4 16v1a3 3 0 0 0 3 3h10a3 3 0 0 0 3-3v-1M12 12V4m0 0l-3 3m3-3l3 3"/></svg>
@@ -329,7 +338,8 @@
         const fd = new FormData(); 
         fd.append('file', f);
         const alpha = parseFloat(alphaEl.value);
-        const url = `http://localhost:8000/infer?overlay_alpha=${alpha}`;
+        const model = document.getElementById("modelSelect").value;
+        const url = `http://localhost:8000/infer?model=${model}&overlay_alpha=${alpha}`;
 
         const res = await fetch(url, { method:'POST', body:fd });
         const data = await res.json();
